@@ -174,7 +174,7 @@ fn search(req: &mut Request) -> IronResult<Response> {
             let serp = index_server.search(query, num_hits).unwrap();
             let resp_json = serde_json::to_string_pretty(&serp).unwrap();
             let content_type = "application/json".parse::<Mime>().unwrap();
-            Ok(Response::with((content_type, status::Ok, format!("{}", resp_json))))
+            Ok(Response::with((content_type, status::Ok, resp_json.to_string())))
         })
         
 }

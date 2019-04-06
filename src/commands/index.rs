@@ -22,11 +22,11 @@ pub fn run_index_cli(argmatch: &ArgMatches) -> Result<(), String> {
         .map(|path| DocumentSource::FromFile(PathBuf::from(path)))
         .unwrap_or(DocumentSource::FromPipe);
     let no_merge = argmatch.is_present("nomerge");
-    let mut num_threads = value_t!(argmatch, "num_threads", usize).map_err(|_| format!("Failed to read num_threads argument as an integer."))?;
+    let mut num_threads = value_t!(argmatch, "num_threads", usize).map_err(|_| "Failed to read num_threads argument as an integer.".to_string())?;
     if num_threads == 0 {
         num_threads = 1;
     }
-    let buffer_size = value_t!(argmatch, "memory_size", usize).map_err(|_| format!("Failed to read the buffer size argument as an integer."))?;
+    let buffer_size = value_t!(argmatch, "memory_size", usize).map_err(|_| "Failed to read the buffer size argument as an integer.".to_string())?;
     let buffer_size_per_thread = buffer_size / num_threads;
     run_index(index_directory, document_source, buffer_size_per_thread, num_threads, no_merge).map_err(|e| format!("Indexing failed : {:?}", e))
 }
@@ -113,18 +113,16 @@ fn run_index(directory: PathBuf,
 
 fn index_documents(index_writer: &mut IndexWriter, doc_receiver: chan::Receiver<Document>) -> tantivy::Result<u64> {
     let group_count = 100_000;
-    let mut num_docs = 0;
     let mut cur = PreciseTime::now();
-    for doc in doc_receiver {
+    for (num_docs, doc) in doc_receiver.iter().enumerate() {
         index_writer.add_document(doc);
         if num_docs > 0 && (num_docs % group_count == 0) {
             println!("{} Docs", num_docs);
             let new = PreciseTime::now();
             let elapsed = cur.to(new);
-            println!("{:?} docs / hour", group_count * 3600 * 1_000_000 as u64 / (elapsed.num_microseconds().unwrap() as u64));
+            println!("{:?} docs / hour", group_count * 3600 * 1_000_000 / elapsed.num_microseconds().unwrap() as usize);
             cur = new;
         }
-        num_docs += 1;
     }
     index_writer.commit()
 }
@@ -137,11 +135,11 @@ enum DocumentSource {
 
 impl DocumentSource {
     fn read(&self,) -> io::Result<BufReader<Box<Read>>> {
-        Ok(match self {
-            &DocumentSource::FromPipe => {
+        Ok(match *self {
+            DocumentSource::FromPipe => {
                 BufReader::new(Box::new(io::stdin()))
             }
-            &DocumentSource::FromFile(ref filepath) => {
+            DocumentSource::FromFile(ref filepath) => {
                 let read_file = File::open(&filepath)?;
                 BufReader::new(Box::new(read_file))
             }

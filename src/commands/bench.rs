@@ -81,7 +81,7 @@ fn run_bench(index_path: &Path,
         for query_txt in &queries {
             let query = query_parser.parse_query(&query_txt).unwrap();
             let mut top_collector = TopDocs::with_limit(10);
-            let top_docs = searcher.search(&query, &mut top_collector)
+            let top_docs = searcher.search(&query, &top_collector)
                 .map_err(|e| format!("Failed while retrieving document for query {:?}.\n{:?}", query, e))?;
             let mut timer = TimerTree::default();
             {

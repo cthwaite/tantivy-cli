@@ -29,9 +29,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::str::FromStr;
 use tantivy;
-use tantivy::collector;
-use tantivy::collector::CountCollector;
-use tantivy::collector::TopCollector;
+use tantivy::collector::Count;
+use tantivy::collector::TopDocs;
 use tantivy::Document;
 use tantivy::Index;
 use tantivy::query::QueryParser;
@@ -82,7 +81,7 @@ impl IndexServer {
             .filter(RemoveLongFilter::limit(40))
             .filter(LowerCaser)
             .filter(AlphaNumOnlyFilter)
-            .filter(Stemmer::new())
+            .filter(Stemmer::new(Language::English))
         );
         let schema = index.schema();
         let default_fields: Vec<Field> = schema
@@ -109,7 +108,7 @@ impl IndexServer {
         }
     }
 
-    fn create_hit(&self, doc: &Document, doc_address: &DocAddress) -> Hit {
+    fn create_hit(&self, doc: &Document, doc_address: DocAddress) -> Hit {
         Hit {
             doc: self.schema.to_named_doc(&doc),
             id: doc_address.doc(),
@@ -118,30 +117,25 @@ impl IndexServer {
     
     fn search(&self, q: String, num_hits: usize) -> tantivy::Result<Serp> {
         let query = self.query_parser.parse_query(&q).expect("Parsing the query failed");
-        let searcher = self.index.searcher();
-        let mut count_collector = CountCollector::default();
-        let mut top_collector = TopCollector::with_limit(num_hits);
+        let searcher = self.index.reader()?.searcher();
         let mut timer_tree = TimerTree::default();
-        {
+        let (top_hits, num_hits) = {
             let _search_timer = timer_tree.open("search");
-            let mut chained_collector = collector::chain()
-                .push(&mut top_collector)
-                .push(&mut count_collector);
-            query.search(&searcher, &mut chained_collector)?;
-        }
+            searcher.search(&query, &(TopDocs::with_limit(num_hits), Count))?
+        };
+
         let hits: Vec<Hit> = {
             let _fetching_timer = timer_tree.open("fetching docs");
-            top_collector.docs()
-                .iter()
-                .map(|doc_address| {
-                    let doc: Document = searcher.doc(*doc_address).unwrap();
+            top_hits.into_iter()
+                .map(|(_score, doc_address)| {
+                    let doc: Document = searcher.doc(doc_address).unwrap();
                     self.create_hit(&doc, doc_address)
                 })
                 .collect()
         };
         Ok(Serp {
             q,
-            num_hits: count_collector.count(),
+            num_hits,
             hits,
             timings: timer_tree,
         })

@@ -6,9 +6,8 @@ use std::io::BufReader;
 use std::io::BufRead;
 use std::io;
 use std::fs::File;
-use tantivy::collector::chain;
-use tantivy::collector::TopCollector;
-use tantivy::collector::CountCollector;
+use tantivy::collector::TopDocs;
+use tantivy::collector::Count;
 use clap::ArgMatches;
 use std::path::PathBuf;
 use timer::TimerTree;
@@ -53,7 +52,7 @@ fn run_bench(index_path: &Path,
     println!("-------------------------------\n\n\n");
     
     let index = Index::open_in_dir(index_path).map_err(|e| format!("Failed to open index.\n{:?}", e))?;
-    let searcher = index.searcher();
+    let searcher = index.reader().map_err(|e| format!("Failed to create IndexReader.\n{:?}", e))?.searcher();
     let default_search_fields: Vec<Field> = extract_search_fields(&index.schema());
     let queries = read_query_file(query_filepath).map_err(|e| format!("Failed reading the query file:  {}", e))?;
     let query_parser = QueryParser::new(index.schema(), default_search_fields, index.tokenizers().clone());
@@ -64,16 +63,14 @@ fn run_bench(index_path: &Path,
         for query_txt in &queries {
             let query = query_parser.parse_query(&query_txt).unwrap();
             // let num_terms = query.num_terms();
-            let mut top_collector = TopCollector::with_limit(10);
-            let mut count_collector = CountCollector::default();
+            let mut top_collector = TopDocs::with_limit(10);
             let mut timing = TimerTree::default();
-            {
+            let (_, count) = {
                 let _search = timing.open("search");
-                let mut collector = chain().push(&mut top_collector).push(&mut count_collector);
-                query.search(&searcher, &mut collector)
-                    .map_err(|e| format!("Failed while searching query {:?}.\n\n{:?}", query_txt, e))?;
-            }
-            println!("{}\t{}\t{}", query_txt, count_collector.count(), timing.total_time());
+                searcher.search(&query, &(top_collector, Count))
+                    .map_err(|e| format!("Failed while searching query {:?}.\n\n{:?}", query_txt, e))?
+            };
+            println!("{}\t{}\t{}", query_txt, count, timing.total_time());
         }
     }
     
@@ -83,13 +80,13 @@ fn run_bench(index_path: &Path,
     for _ in 0..num_repeat {
         for query_txt in &queries {
             let query = query_parser.parse_query(&query_txt).unwrap();
-            let mut top_collector = TopCollector::with_limit(10);
-            query.search(&searcher, &mut top_collector)
+            let mut top_collector = TopDocs::with_limit(10);
+            let top_docs = searcher.search(&query, &mut top_collector)
                 .map_err(|e| format!("Failed while retrieving document for query {:?}.\n{:?}", query, e))?;
             let mut timer = TimerTree::default();
             {
                 let _scoped_timer_ = timer.open("total");
-                for doc_address in top_collector.docs() {
+                for (_score, doc_address) in top_docs {
                     searcher.doc(doc_address).unwrap();
                 }
             }

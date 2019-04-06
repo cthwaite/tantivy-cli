@@ -24,8 +24,8 @@ fn prompt_input<P: Fn(&str) -> Result<(), String>>(prompt_text: &str, predicate:
         print!("{prompt_text:<width$} ? ", prompt_text=Style::new().bold().fg(Blue).paint(prompt_text), width=40);
         io::stdout().flush().unwrap();
         let mut buffer = String::new();
-        io::stdin().read_line(&mut buffer).ok().expect("Failed to read line");
-        let answer = buffer.trim_right().to_string();
+        io::stdin().read_line(&mut buffer).expect("Failed to read line");
+        let answer = buffer.trim_end().to_string();
         match predicate(&answer) {
             Ok(()) => {
                 return answer;
@@ -57,10 +57,10 @@ fn prompt_options(msg: &str, codes: Vec<char>) -> char {
         }
         let c = entry.chars().next().unwrap().to_ascii_uppercase();
         if codes.contains(&c) {
-            return Ok(())
+            Ok(())
         }
         else {
-            return Err(format!("Invalid input. Options are ({})", options))
+            Err(format!("Invalid input. Options are ({})", options))
         }
     };
     let message = format!("{} ({})", msg, options);
@@ -144,7 +144,7 @@ fn run_new(directory: PathBuf) -> tantivy::Result<()> {
         }
     }
     let schema = schema_builder.build();
-    let schema_json = format!("{}", serde_json::to_string_pretty(&schema).unwrap());
+    let schema_json = serde_json::to_string_pretty(&schema).unwrap();
     println!("\n{}\n", Style::new().fg(Green).paint(schema_json));
     match fs::create_dir(&directory) {
         Ok(_) => (),

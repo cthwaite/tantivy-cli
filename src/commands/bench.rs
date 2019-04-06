@@ -61,7 +61,7 @@ fn run_bench(index_path: &Path,
     println!("{}\t{}\t{}\t{}", "query", "num_terms", "num hits", "time in microsecs");
     for _ in 0..num_repeat {
         for query_txt in &queries {
-            let query = query_parser.parse_query(&query_txt).unwrap();
+            let query = query_parser.parse_query(&query_txt).map_err(|e| format!("Failed to parse query `{}`.\n{:?}", query_txt, e))?;
             // let num_terms = query.num_terms();
             let mut top_collector = TopDocs::with_limit(10);
             let mut timing = TimerTree::default();
